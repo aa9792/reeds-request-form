@@ -25,11 +25,11 @@ function getSheet_() {
   const book = SpreadsheetApp.openById(SPREADSHEET_ID);
   let sheet = book.getSheetByName(SHEET_NAME);
   if (!sheet) sheet = book.insertSheet(SHEET_NAME);
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['請示單編號','送出時間','登入Email','請購日期','申請人','申請單位','用途說明','預算科目','項次','品名','規格','單位','數量','單價','小計','備註','總額','交貨日期','交貨地點','支付方式']);
-    sheet.setFrozenRows(1);
-    sheet.getRange(1, 1, 1, 20).setBackground('#205e49').setFontColor('#ffffff').setFontWeight('bold');
-  }
+  const headers = ['請示單編號','送出時間','登入Email','請購日期','申請人','申請單位','用途說明','預算科目','項次','品名','規格','單位','數量','單價','小計','備註','總額','交貨日期','交貨地點','支付方式'];
+  if (sheet.getLastRow() > 0 && sheet.getRange(1, 3).getDisplayValue() !== '登入Email') sheet.insertColumnBefore(3);
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, headers.length).setBackground('#205e49').setFontColor('#ffffff').setFontWeight('bold');
   return sheet;
 }
 
