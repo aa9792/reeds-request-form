@@ -3,7 +3,7 @@ import './globals.css';
 import { requireChatGPTUser } from './chatgpt-auth';
 
 export const metadata: Metadata = {
-  title: '睿思請示單｜申請與 PDF 套版',
+  title: '睿思實驗機構｜請示單申請與 PDF 套版',
   description: '線上填寫請示單、留存至 Google Sheets 並下載正式 PDF。',
 };
 
