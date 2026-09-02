@@ -1,4 +1,4 @@
-const SPREADSHEET_ID = '請貼上你的 Google Sheet ID';
+const SPREADSHEET_ID = '1k6H3tHQT3nQyCASPB-dlFhg9CiYIC36F8egwofCGxVo';
 const SHEET_NAME = '請示單';
 
 function doPost(e) {
