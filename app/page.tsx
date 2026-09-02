@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, FileCheck2, Plus, Send, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,22 +10,57 @@ type Item = { name: string; spec: string; unit: string; qty: number; price: numb
 const blankItem = (): Item => ({ name: '', spec: '', unit: '', qty: 1, price: 0, note: '' });
 const money = (n: number) => new Intl.NumberFormat('zh-TW').format(n || 0);
 const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzxZOa7f0uDTruhLTc8snGeUYFbLLazO_B3nqw3GTXPqfldf-kna3-U4gwkGHdsLoi6/exec';
+const GOOGLE_CLIENT_ID = '773024892542-2rns6uushetnnlssmoar33qighomtl0j.apps.googleusercontent.com';
+
+type GoogleUser = { email: string; name: string; picture?: string };
+
+function decodeGoogleUser(token: string): GoogleUser | null {
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(decodeURIComponent(Array.from(atob(payload), c => `%${c.charCodeAt(0).toString(16).padStart(2, '0')}`).join('')));
+  } catch { return null; }
+}
 
 export default function Home() {
   const [form, setForm] = useState({ applicant: '', department: '', date: new Date().toISOString().slice(0, 10), purpose: '', budgetCode: '', deliveryDate: '', deliveryPlace: '', payment: '', payee: '', bank: '', account: '' });
   const [items, setItems] = useState<Item[]>([{ name: '餐費', spec: '', unit: '份', qty: 80, price: 100, note: '雅真墊付' }]);
   const [message, setMessage] = useState('');
+  const [googleCredential, setGoogleCredential] = useState('');
+  const [googleUser, setGoogleUser] = useState<GoogleUser | null>(null);
   const paperRef = useRef<HTMLDivElement>(null);
+  const googleButtonRef = useRef<HTMLDivElement>(null);
   const total = useMemo(() => items.reduce((sum, item) => sum + Number(item.qty) * Number(item.price), 0), [items]);
   const set = (key: keyof typeof form, value: string) => setForm((old) => ({ ...old, [key]: value }));
   const updateItem = (index: number, key: keyof Item, value: string | number) => setItems((old) => old.map((item, i) => i === index ? { ...item, [key]: value } : item));
+
+  useEffect(() => {
+    let attempts = 0;
+    const start = () => {
+      const google = (window as any).google;
+      if (!google?.accounts?.id || !googleButtonRef.current) {
+        if (attempts++ < 40) window.setTimeout(start, 150);
+        return;
+      }
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: ({ credential }: { credential: string }) => {
+          const user = decodeGoogleUser(credential);
+          setGoogleCredential(credential);
+          setGoogleUser(user);
+          if (user?.name && !form.applicant) setForm(old => ({ ...old, applicant: user.name }));
+        },
+      });
+      google.accounts.id.renderButton(googleButtonRef.current, { theme: 'outline', size: 'large', text: 'signin_with', shape: 'pill', width: 280 });
+    };
+    start();
+  }, []);
 
   async function submit() {
     if (!form.applicant || !form.purpose || items.every((item) => !item.name)) { setMessage('請填寫申請人、用途說明與至少一筆品項。'); return; }
     const endpoint = GOOGLE_SCRIPT_URL;
     if (!endpoint) { setMessage('資料已整理完成。管理者設定 Google Sheets 連線後即可正式送出。'); return; }
     try {
-      await fetch(endpoint, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'createRequest', ...form, items, total, loginEmail: document.body.dataset.userEmail || '', submittedAt: new Date().toISOString() }) });
+      await fetch(endpoint, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'createRequest', ...form, items, total, googleCredential, submittedAt: new Date().toISOString() }) });
       setMessage('請示單已送出並寫入 Google Sheets。');
     } catch { setMessage('送出失敗，請稍後再試。'); }
   }
@@ -41,7 +76,14 @@ export default function Home() {
     setMessage('PDF 已下載。');
   }
 
-  return <main><header className="topbar"><div className="brand"><span className="brand-mark">睿</span><div><strong>睿思請示單</strong><small>申請、留存、套版，一次完成</small></div></div><span className="status"><span />公開服務</span></header>
+  if (!googleCredential) return <main className="login-page"><section className="login-card"><span className="brand-mark">睿</span><div className="eyebrow">REEDS REQUEST SYSTEM</div><h1>登入後開始填寫</h1><p>使用 Google 帳號登入，才能建立請示單。系統只會讀取你的姓名與 Email，不會取得 Google Drive 或試算表權限。</p><div className="google-button" ref={googleButtonRef}/><small>登入代表你同意將姓名、Email 與請示內容留存於校方的 Google Sheets。</small></section></main>;
+
+  function signOut() {
+    (window as any).google?.accounts?.id?.disableAutoSelect();
+    setGoogleCredential(''); setGoogleUser(null);
+  }
+
+  return <main><header className="topbar"><div className="brand"><span className="brand-mark">睿</span><div><strong>睿思請示單</strong><small>申請、留存、套版，一次完成</small></div></div><div className="account"><span className="status"><span />{googleUser?.email}</span><button onClick={signOut}>登出</button></div></header>
     <section className="workspace"><div className="form-column"><div className="eyebrow">NEW REQUEST · 新增申請</div><h1>建立請示單</h1><p className="lead">依序填寫資料，右側會即時套入正式 A4 格式。</p>
       <section className="form-card"><SectionTitle n="01" title="基本資料" note="申請人與請示內容"/><div className="grid two"><Field label="申請人 *"><Input value={form.applicant} onChange={(e) => set('applicant', e.target.value)} placeholder="例如：王小明" /></Field><Field label="申請單位"><Input value={form.department} onChange={(e) => set('department', e.target.value)} placeholder="例如：教務處" /></Field></div><div className="grid two"><Field label="請購日期"><Input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} /></Field><Field label="預算科目"><Input value={form.budgetCode} onChange={(e) => set('budgetCode', e.target.value)} placeholder="例如：53220000" /></Field></div><Field label="用途說明 *"><Textarea value={form.purpose} onChange={(e) => set('purpose', e.target.value)} placeholder="請簡述申請用途與原因" /></Field></section>
       <section className="form-card"><div className="section-head"><SectionTitle n="02" title="請購明細" note="品項與預估金額"/><Button variant="outline" onClick={() => setItems((old) => [...old, blankItem()])}><Plus />新增品項</Button></div>{items.map((item, index) => <div className="item" key={index}><div className="item-top"><strong>品項 {String(index + 1).padStart(2, '0')}</strong>{items.length > 1 && <button aria-label="刪除品項" onClick={() => setItems((old) => old.filter((_, i) => i !== index))}><Trash2 size={16}/></button>}</div><div className="grid two"><Field label="品名"><Input value={item.name} onChange={(e) => updateItem(index, 'name', e.target.value)} /></Field><Field label="規格"><Input value={item.spec} onChange={(e) => updateItem(index, 'spec', e.target.value)} /></Field></div><div className="grid four"><Field label="單位"><Input value={item.unit} onChange={(e) => updateItem(index, 'unit', e.target.value)} /></Field><Field label="數量"><Input type="number" min="0" value={item.qty} onChange={(e) => updateItem(index, 'qty', Number(e.target.value))} /></Field><Field label="單價"><Input type="number" min="0" value={item.price} onChange={(e) => updateItem(index, 'price', Number(e.target.value))} /></Field><Field label="小計"><div className="calculated">NT$ {money(item.qty * item.price)}</div></Field></div><Field label="備註"><Input value={item.note} onChange={(e) => updateItem(index, 'note', e.target.value)} /></Field></div>)}<div className="total"><span>預估總額</span><strong>NT$ {money(total)}</strong></div></section>
